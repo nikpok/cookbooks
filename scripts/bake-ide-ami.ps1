@@ -794,6 +794,29 @@ $jsonObject = @"
 
         ReConnect-Session
 
+        if ($Cloud -eq 'Azure' ) {
+            # Add the VM Provisioning registry entry - prevents the machine is in an invalid state
+            Write-Host "$(Log-Date) Add the VM Provisioning registry entry prior to image creation"
+            Execute-RemoteBlock $Script:session {
+                try {
+                    $CleanupState = 2
+                    $GeneralizationState = 7
+                    Write-Host ("Save VM SysprepStatus - CleanupState to $CleanupState and GlobalizationState to $GeneralizationState in registry")
+                    $sysPrepStatusKey = "HKLM:\SYSTEM\Setup\Status\SysprepStatus"
+                    New-Item -Path $sysPrepStatusKey -Force | Write-Host    
+                    New-ItemProperty -Path $sysPrepStatusKey -Name 'CleanupState' -PropertyType DWord -Value $CleanupState -Force | Out-Default | Write-Host
+                    New-ItemProperty -Path $sysPrepStatusKey -Name 'GeneralizationState' -PropertyType DWord -Value $GeneralizationState -Force | Out-Default | Write-Host
+
+                } catch {
+                    Write-RedOutput $_ | Out-Default | Write-Host
+                    Write-RedOutput $PSItem.ScriptStackTrace | Out-Default | Write-Host
+                    throw 'Script Block : Add the VM Provisioning registry entry'
+                }
+                # Ensure last exit code is 0. (exit by itself will terminate the remote session)
+                cmd /c exit 0
+            }
+        }
+
         Write-Host "$(Log-Date) Sysprep"
         Write-Host "Use Invoke-Command as the Sysprep will terminate the instance and thus Execute-RemoteBlock will return a fatal error"
 
@@ -834,7 +857,6 @@ $jsonObject = @"
 
     if ( $Cloud -eq 'Azure' ) {
         Wait-AzureVMState $VmResourceGroup $Script:vmname "not running"
-
         Write-Host "$(Log-Date) Starting Azure Image Creation"
 
         Write-Host "$(Log-Date) Delete image if it already exists"
